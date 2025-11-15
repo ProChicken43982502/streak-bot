@@ -76,11 +76,6 @@ async def on_message(message):
     # Only listen to Disboard bot (real bot ID)
     if message.author.id != 302050872383242240:
         return
-
-    await message.channel.send(
-        f"Detected Disboard Bot"
-    )
-
     
     # Detect bump success from embed text
     bump_success = False
@@ -91,13 +86,7 @@ async def on_message(message):
             break
 
     if not bump_success:
-        await message.channel.send(
-            f"Detected no /bump"
-        )
         return
-    await message.channel.send(
-        f"Detected a /bump"
-    )
 
     # Identify the bumper using mentions
     if message.mentions:
@@ -122,6 +111,9 @@ async def on_message(message):
 
     # Update streak
     if last_date == today:
+        await message.channel.send(
+        f"🎉 {bumper.mention} bumped the server again! Current streak: **{user_data['bump_streak']} days!**"
+    )
         return  # already bumped today
 
     elif last_date == today - timedelta(days=1):
@@ -166,7 +158,7 @@ async def add_streak(interaction: discord.Interaction, member: discord.Member, d
         await interaction.response.send_message(
             f"✅ Successfully added **{days} days** to {member.mention}'s streak. "
             f"New streak: **{user_data['bump_streak']} days!**", 
-            ephemeral=False # Announce publicly
+            ephemeral=True
         )
     else:
         if user_data["bump_streak"] - days < 0:
@@ -174,14 +166,14 @@ async def add_streak(interaction: discord.Interaction, member: discord.Member, d
             await interaction.response.send_message(
                 f"✅ Successfully reset {member.mention}'s streak. "
                 f"New streak: **{user_data['bump_streak']} days!**", 
-                ephemeral=False # Announce publicly
+                ephemeral=True
             )
         else:
             user_data["bump_streak"] -= days
             await interaction.response.send_message(
                 f"✅ Successfully subtracted **{days} days** to {member.mention}'s streak. "
                 f"New streak: **{user_data['bump_streak']} days!**", 
-                ephemeral=False # Announce publicly
+                ephemeral=True
             )
 
     bump_data[user_id] = user_data
@@ -202,9 +194,9 @@ async def add_streak_error(interaction: discord.Interaction, error: app_commands
         raise error
 
 # ----------------------
-# /streak (slash command)
+# /bumpstreak (slash command)
 # ----------------------
-@tree.command(name="streak", description="Check your bump streak.")
+@tree.command(name="bumpstreak", description="Check your bump streak.")
 async def streak(interaction: discord.Interaction):
 
     user_id = str(interaction.user.id)
@@ -245,15 +237,6 @@ async def bumpleaderboard(interaction: discord.Interaction):
         msg += f"**{i}. {name} — {info['bump_streak']} days**\n"
 
     await interaction.response.send_message(msg)
-
-
-# ----------------------
-# Example basic command
-# ----------------------
-@bot.command()
-async def ping(ctx):
-    await ctx.send("Pong! 🏓")
-
 
 # ----------------------
 # Run bot
