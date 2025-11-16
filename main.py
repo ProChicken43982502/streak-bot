@@ -67,6 +67,18 @@ async def on_ready():
 # Detect Disboard bump success
 # ----------------------
 
+last_bump_attempt = {}  # channel_id : user_id
+
+@bot.event
+async def on_message(message):
+
+    # Detect when someone uses /bump
+    if message.interaction:
+        if message.interaction.name == "bump":
+            last_bump_attempt[message.channel.id] = message.author.id
+
+    await bot.process_commands(message)
+
 @bot.event
 async def on_message(message):
 
@@ -89,16 +101,9 @@ async def on_message(message):
         return
 
     # Identify the bumper using mentions
-    if message.mentions:
-        bumper = message.mentions[0]
-    else:
-        # fallback: last non-bot message
-        async for msg in message.channel.history(limit=10):
-            if not msg.author.bot:
-                bumper = msg.author
-                break
-        else:
-            return
+    channel_id = message.channel.id
+    bumper_id = last_bump_attempt.get(channel_id)
+    bumper = message.guild.get_member(bumper_id)
 
     user_id = str(bumper.id)
     today = datetime.utcnow().date()
