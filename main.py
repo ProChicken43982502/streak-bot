@@ -88,6 +88,10 @@ async def on_message(message):
     # Only listen to Disboard bot (real bot ID)
     if message.author.id != 302050872383242240:
         return
+
+    await message.channel.send(
+        f"Found Disboard"
+    )
     
     # Detect bump success from embed text
     bump_success = False
@@ -100,9 +104,13 @@ async def on_message(message):
     if not bump_success:
         return
 
+    await message.channel.send(
+        f"Found Bump"
+    )
+    
     # Identify the bumper using mentions
     channel_id = message.channel.id
-    bumper_id = last_bump_attempt.get(channel_id)
+    user_id = last_bump_attempt.get(channel_id)
     bumper = message.guild.get_member(bumper_id)
 
     user_id = str(bumper.id)
@@ -110,6 +118,10 @@ async def on_message(message):
 
     user_data = bump_data.get(user_id, {"bump_streak": 0, "last_bump_date": None})
 
+    await message.channel.send(
+        f"Found {bumper}"
+    )
+    
     last_date = None
     if user_data["last_bump_date"]:
         last_date = datetime.fromisoformat(user_data["last_bump_date"]).date()
