@@ -110,7 +110,7 @@ async def on_message(message):
     
     # Identify the bumper using mentions
     channel_id = message.channel.id
-    user_id = last_bump_attempt.get(channel_id)
+    bumper_id = last_bump_attempt.get(channel_id)
     bumper = message.guild.get_member(bumper_id)
 
     user_id = str(bumper.id)
