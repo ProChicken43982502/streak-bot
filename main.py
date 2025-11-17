@@ -89,8 +89,6 @@ async def on_interaction(interaction: discord.Interaction):
 # --------------------------------------------
 
 DISBOARD_ID = 302050872383242240  # real bot ID
-
-@bot.event
 @bot.event
 async def on_message(message):
 
