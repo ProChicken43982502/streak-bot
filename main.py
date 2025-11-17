@@ -91,19 +91,26 @@ async def on_interaction(interaction: discord.Interaction):
 DISBOARD_ID = 302050872383242240  # real bot ID
 
 @bot.event
+@bot.event
 async def on_message(message):
 
-    # Allow prefix commands to work
+    # Allow commands to work
     await bot.process_commands(message)
 
-    # Only react to Disboard's messages
-    if message.author.id != DISBOARD_ID:
+    # 1️⃣ Detect the user doing /bump
+    if message.content.strip().lower() == "/bump":
+        last_bump_attempt[message.channel.id] = message.author.id
+        print(f"Recorded bumper: {message.author} in channel {message.channel.id}")
+        return  # do not continue
+
+
+
+    # 2️⃣ Only react to Disboard's bump confirmation
+    if message.author.id != 302050872383242240:
         return
 
-    # Debug
     await message.channel.send("Found Disboard")
 
-    # Check if any embed contains "bump done"
     bump_success = False
     for embed in message.embeds:
         if embed.description and "bump done" in embed.description.lower():
@@ -115,17 +122,13 @@ async def on_message(message):
 
     await message.channel.send("Found Bump")
 
-    # Retrieve bumper based on last recorded interaction
+    # 3️⃣ Retrieve the bumper
     bumper_id = last_bump_attempt.get(message.channel.id)
 
     if not bumper_id:
         return await message.channel.send("❌ Could not determine who bumped.")
 
     bumper = message.guild.get_member(bumper_id)
-
-    if not bumper:
-        return await message.channel.send("❌ Bumper not found in guild!")
-
     await message.channel.send(f"Found {bumper}")
 
     # ------------------------------------
