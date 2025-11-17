@@ -12,10 +12,7 @@ intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 tree = bot.tree
 
-# Use an environment variable for the token (so you never commit it)
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-
-# Make a safe DATA_FILE path (so it works on Railway)
 DATA_FILE = os.path.join(os.getcwd(), "bump_data.json")
 
 def load_data():
@@ -31,7 +28,14 @@ def save_data(data):
 
 bump_data = load_data()
 
-# Helper function to apply role rewards
+# Track last person who ran /bump in each channel
+last_bump_attempt = {}  # channel_id : user_id
+
+
+# --------------------------------------------
+# ROLE UPDATE FUNCTION
+# --------------------------------------------
+
 async def update_roles(member, streak):
     if not member or not member.guild:
         return
@@ -40,22 +44,20 @@ async def update_roles(member, streak):
     super_role = discord.utils.get(guild.roles, name="Super Bumper")
     master_role = discord.utils.get(guild.roles, name="Master Bumper")
 
-    # Check for Master Bumper first (higher requirement)
     if streak >= 25 and master_role:
-        # Add Master role and remove Super role if present
-        if super_role in member.roles and super_role:
+        if super_role in member.roles:
             await member.remove_roles(super_role)
         if master_role not in member.roles:
             await member.add_roles(master_role)
-    # Check for Super Bumper second
+
     elif streak >= 10 and super_role:
         if super_role not in member.roles:
             await member.add_roles(super_role)
 
 
-# ----------------------
-# Bot Ready
-# ----------------------
+# --------------------------------------------
+# BOT READY
+# --------------------------------------------
 
 @bot.event
 async def on_ready():
@@ -63,39 +65,46 @@ async def on_ready():
     print(f"✅ Logged in as {bot.user}")
     print("Slash commands synced.")
 
-# ----------------------
-# Detect Disboard bump success
-# ----------------------
 
-last_bump_attempt = {}  # channel_id : user_id
+# --------------------------------------------
+# DETECT /bump USING on_interaction
+# --------------------------------------------
+
+@bot.event
+async def on_interaction(interaction: discord.Interaction):
+    # Detect if user ran Disboard's /bump
+    if interaction.type == discord.InteractionType.application_command:
+        cmd = interaction.data.get("name")
+
+        if cmd == "bump":  # Disboard command
+            last_bump_attempt[interaction.channel_id] = interaction.user.id
+            # Debug log
+            print(f"📌 Recorded bumper: {interaction.user} in channel {interaction.channel_id}")
+
+    await bot.process_application_commands(interaction)
+
+
+# --------------------------------------------
+# DETECT DISBOARD EMBED IN on_message
+# --------------------------------------------
+
+DISBOARD_ID = 302050872383242240  # real bot ID
 
 @bot.event
 async def on_message(message):
 
-    # Detect when someone uses /bump
-    if message.interaction:
-        if message.interaction.name == "bump":
-            last_bump_attempt[message.channel.id] = message.author.id
-
+    # Allow prefix commands to work
     await bot.process_commands(message)
 
-@bot.event
-async def on_message(message):
-
-    # allow prefix and slash commands to work
-    await bot.process_commands(message)
-
-    # Only listen to Disboard bot (real bot ID)
-    if message.author.id != 302050872383242240:
+    # Only react to Disboard's messages
+    if message.author.id != DISBOARD_ID:
         return
 
-    await message.channel.send(
-        f"Found Disboard"
-    )
-    
-    # Detect bump success from embed text
-    bump_success = False
+    # Debug
+    await message.channel.send("Found Disboard")
 
+    # Check if any embed contains "bump done"
+    bump_success = False
     for embed in message.embeds:
         if embed.description and "bump done" in embed.description.lower():
             bump_success = True
@@ -104,37 +113,46 @@ async def on_message(message):
     if not bump_success:
         return
 
-    await message.channel.send(
-        f"Found Bump"
-    )
-    
-    # Identify the bumper using mentions
-    channel_id = message.channel.id
-    bumper_id = last_bump_attempt.get(channel_id)
+    await message.channel.send("Found Bump")
+
+    # Retrieve bumper based on last recorded interaction
+    bumper_id = last_bump_attempt.get(message.channel.id)
+
+    if not bumper_id:
+        return await message.channel.send("❌ Could not determine who bumped.")
+
     bumper = message.guild.get_member(bumper_id)
+
+    if not bumper:
+        return await message.channel.send("❌ Bumper not found in guild!")
+
+    await message.channel.send(f"Found {bumper}")
+
+    # ------------------------------------
+    # UPDATE STREAK
+    # ------------------------------------
 
     user_id = str(bumper.id)
     today = datetime.utcnow().date()
 
     user_data = bump_data.get(user_id, {"bump_streak": 0, "last_bump_date": None})
-
-    await message.channel.send(
-        f"Found {bumper}"
+    last_date = (
+        datetime.fromisoformat(user_data["last_bump_date"]).date()
+        if user_data["last_bump_date"]
+        else None
     )
-    
-    last_date = None
-    if user_data["last_bump_date"]:
-        last_date = datetime.fromisoformat(user_data["last_bump_date"]).date()
 
-    # Update streak
+    # same day bump
     if last_date == today:
-        await message.channel.send(
-        f"🎉 {bumper.mention} bumped the server again! Current streak: **{user_data['bump_streak']} days!**"
-    )
-        return  # already bumped today
+        return await message.channel.send(
+            f"🎉 {bumper.mention} bumped again today! Streak: **{user_data['bump_streak']} days**"
+        )
 
+    # continuing streak
     elif last_date == today - timedelta(days=1):
         user_data["bump_streak"] += 1
+
+    # reset streak
     else:
         user_data["bump_streak"] = 1
 
@@ -142,111 +160,99 @@ async def on_message(message):
     bump_data[user_id] = user_data
     save_data(bump_data)
 
-    # Update roles
     await update_roles(bumper, user_data["bump_streak"])
 
-    # Announce
     await message.channel.send(
-        f"🎉 {bumper.mention} bumped the server! Current streak: **{user_data['bump_streak']} days!**"
+        f"🎉 {bumper.mention} bumped the server! Streak: **{user_data['bump_streak']} days!**"
     )
 
-# ----------------------
-# /addstreak (ADMIN COMMAND - NEW)
-# ----------------------
-@tree.command(name="editstreak", description="[ADMIN] Manually add / subtract days to a user's bump streak.")
+
+# --------------------------------------------
+# ADMIN: /editstreak
+# --------------------------------------------
+
+@tree.command(name="editstreak", description="[ADMIN] Adjust a user's bump streak.")
 @app_commands.checks.has_permissions(manage_guild=True)
 @app_commands.describe(
-    member="The member whose streak you want to update.",
-    days="The number of days to change from their current streak.",
-    operation_add="Use true to add | Use false to subtract"
+    member="User to modify.",
+    days="Number of days.",
+    operation_add="True = add, False = subtract."
 )
-async def add_streak(interaction: discord.Interaction, member: discord.Member, days: int, operation_add: bool):
+async def editstreak_cmd(interaction: discord.Interaction, member: discord.Member, days: int, operation_add: bool):
 
     user_id = str(member.id)
     today = datetime.utcnow().date()
-    
-    # Load user data or initialize if new
-    user_data = bump_data.get(user_id, {"bump_streak": 0, "last_bump_date": None})
 
+    user_data = bump_data.get(user_id, {"bump_streak": 0, "last_bump_date": None})
     user_data["last_bump_date"] = today.isoformat()
 
     if operation_add:
         user_data["bump_streak"] += days
-        await interaction.response.send_message(
-            f"✅ Successfully added **{days} days** to {member.mention}'s streak. "
-            f"New streak: **{user_data['bump_streak']} days!**", 
-            ephemeral=True
-        )
+        msg = f"Added **{days} days**"
     else:
-        if user_data["bump_streak"] - days < 0:
-            user_data["bump_streak"] = 0
-            await interaction.response.send_message(
-                f"✅ Successfully reset {member.mention}'s streak. "
-                f"New streak: **{user_data['bump_streak']} days!**", 
-                ephemeral=True
-            )
-        else:
-            user_data["bump_streak"] -= days
-            await interaction.response.send_message(
-                f"✅ Successfully subtracted **{days} days** to {member.mention}'s streak. "
-                f"New streak: **{user_data['bump_streak']} days!**", 
-                ephemeral=True
-            )
+        user_data["bump_streak"] = max(0, user_data["bump_streak"] - days)
+        msg = f"Subtracted **{days} days**"
 
     bump_data[user_id] = user_data
     save_data(bump_data)
 
-    # Apply role rewards
-    await update_roles(member, user_data['bump_streak'])
+    await update_roles(member, user_data["bump_streak"])
 
-# Handle permission errors for the admin command
-@add_streak.error
-async def add_streak_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    await interaction.response.send_message(
+        f"✅ {msg} for {member.mention}. New streak: **{user_data['bump_streak']} days**",
+        ephemeral=True
+    )
+
+
+@editstreak_cmd.error
+async def editstreak_error(interaction: discord.Interaction, error):
     if isinstance(error, app_commands.MissingPermissions):
-        await interaction.response.send_message(
-            "You need the **Manage Server** permission to use this command.", ephemeral=True
+        return await interaction.response.send_message(
+            "❌ You need **Manage Server** permission.",
+            ephemeral=True
         )
-    else:
-        # Re-raise other errors
-        raise error
+    raise error
 
-# ----------------------
-# /bumpstreak (slash command)
-# ----------------------
+
+# --------------------------------------------
+# USER: /bumpstreak
+# --------------------------------------------
+
 @tree.command(name="bumpstreak", description="Check your bump streak.")
-async def streak(interaction: discord.Interaction):
+async def bumpstreak_cmd(interaction: discord.Interaction):
 
     user_id = str(interaction.user.id)
 
     if user_id not in bump_data:
         return await interaction.response.send_message(
-            "You don't have a streak yet! Bump the server to start one."
+            "You don't have a streak yet! Use `/bump` to start.",
+            ephemeral=True
         )
 
     streak = bump_data[user_id]["bump_streak"]
 
     await interaction.response.send_message(
-        f"🔥 **{interaction.user.display_name}**, your streak is **{streak} days!**"
+        f"🔥 {interaction.user.display_name}, your streak is **{streak} days!**"
     )
 
 
-# ----------------------
-# /bumpleaderboard (slash command)
-# ----------------------
-@tree.command(name="bumpleaderboard", description="Show the top 5 bump streaks.")
-async def bumpleaderboard(interaction: discord.Interaction):
+# --------------------------------------------
+# USER: /bumpleaderboard
+# --------------------------------------------
+
+@tree.command(name="bumpleaderboard", description="Top 5 bump streaks.")
+async def bumpleaderboard_cmd(interaction: discord.Interaction):
 
     if not bump_data:
-        return await interaction.response.send_message("No streaks yet!")
+        return await interaction.response.send_message("Nobody has a streak yet!")
 
-    # Sort by streak descending
     top = sorted(
         bump_data.items(),
         key=lambda x: x[1]["bump_streak"],
         reverse=True
     )[:5]
 
-    msg = "🏆 **Top 5 Bump Streaks:**\n\n"
+    msg = "🏆 **Top 5 Bump Streaks**:\n\n"
 
     for i, (uid, info) in enumerate(top, start=1):
         member = interaction.guild.get_member(int(uid))
@@ -255,9 +261,10 @@ async def bumpleaderboard(interaction: discord.Interaction):
 
     await interaction.response.send_message(msg)
 
-# ----------------------
-# Run bot
-# ----------------------
+
+# --------------------------------------------
+# RUN BOT
+# --------------------------------------------
 
 if not DISCORD_TOKEN:
     raise RuntimeError("DISCORD_TOKEN environment variable not set.")
