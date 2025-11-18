@@ -83,6 +83,9 @@ async def on_interaction(interaction: discord.Interaction):
 
     await bot.process_application_commands(interaction)
 
+@bot.tree.command(name="bump", description="Detects when someone uses Disboard's /bump")
+async def get_bump(interaction: discord.Interaction):
+    await interaction.response.send_message(f"{interaction.user.mention}")
 
 # --------------------------------------------
 # DETECT DISBOARD EMBED IN on_message
