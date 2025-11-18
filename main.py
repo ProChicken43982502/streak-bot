@@ -28,10 +28,6 @@ def save_data(data):
 
 bump_data = load_data()
 
-# Track last person who ran /bump in each channel
-last_bump_attempt = {}  # channel_id : user_id
-
-
 # --------------------------------------------
 # ROLE UPDATE FUNCTION
 # --------------------------------------------
@@ -54,7 +50,6 @@ async def update_roles(member, streak):
         if super_role not in member.roles:
             await member.add_roles(super_role)
 
-
 # --------------------------------------------
 # BOT READY
 # --------------------------------------------
@@ -65,76 +60,36 @@ async def on_ready():
     print(f"✅ Logged in as {bot.user}")
     print("Slash commands synced.")
 
+# --------------------------------------------
+# NEW SYSTEM: DETECT BUMP-BOT CONFIRMATION
+# --------------------------------------------
 
-# --------------------------------------------
-# DETECT /bump USING on_interaction
-# --------------------------------------------
+BUMP_BOT_ID = 1076203014834759780  # <-- Replace with ACTUAL Bump-Bot ID if different
 
 @bot.event
-async def on_interaction(interaction: discord.Interaction):
-    # Detect if user ran Disboard's /bump
-    if interaction.type == discord.InteractionType.application_command:
-        cmd = interaction.data.get("name")
+async def on_message(message: discord.Message):
 
-        if cmd == "bump":  # Disboard command
-            last_bump_attempt[interaction.channel_id] = interaction.user.id
-            # Debug log
-            print(f"📌 Recorded bumper: {interaction.user} in channel {interaction.channel_id}")
-
-    await bot.process_application_commands(interaction)
-
-@bot.tree.command(name="bump", description="Detects when someone uses Disboard's /bump")
-async def get_bump(interaction: discord.Interaction):
-    await interaction.response.send_message(f"{interaction.user.mention}")
-
-# --------------------------------------------
-# DETECT DISBOARD EMBED IN on_message
-# --------------------------------------------
-
-DISBOARD_ID = 302050872383242240  # real bot ID
-@bot.event
-async def on_message(message):
-
-    # Allow commands to work
+    # Make sure slash commands still work
     await bot.process_commands(message)
 
-    # 1️⃣ Detect the user doing /bump
-    if message.content.strip().lower() == "/bump":
-        last_bump_attempt[message.channel.id] = message.author.id
-        print(f"Recorded bumper: {message.author} in channel {message.channel.id}")
-        return  # do not continue
-
-
-
-    # 2️⃣ Only react to Disboard's bump confirmation
-    if message.author.id != 302050872383242240:
+    # Only listen to bump-bot messages
+    if message.author.id != BUMP_BOT_ID:
         return
 
-    await message.channel.send("Found Disboard")
-
-    bump_success = False
-    for embed in message.embeds:
-        if embed.description and "bump done" in embed.description.lower():
-            bump_success = True
-            break
-
-    if not bump_success:
+    # Detect the confirmation message
+    if "Thx for bumping our Server!" not in message.content:
         return
 
-    await message.channel.send("Found Bump")
+    # Extract the mentioned bumper
+    if len(message.mentions) == 0:
+        await message.channel.send("❌ Could not find the user who bumped.")
+        return
 
-    # 3️⃣ Retrieve the bumper
-    bumper_id = last_bump_attempt.get(message.channel.id)
+    bumper = message.mentions[0]
 
-    if not bumper_id:
-        return await message.channel.send("❌ Could not determine who bumped.")
-
-    bumper = message.guild.get_member(bumper_id)
-    await message.channel.send(f"Found {bumper}")
-
-    # ------------------------------------
+    # --------------------------------------------
     # UPDATE STREAK
-    # ------------------------------------
+    # --------------------------------------------
 
     user_id = str(bumper.id)
     today = datetime.utcnow().date()
@@ -148,15 +103,17 @@ async def on_message(message):
 
     # same day bump
     if last_date == today:
-        return await message.channel.send(
-            f"🎉 {bumper.mention} bumped again today! Streak: **{user_data['bump_streak']} days**"
+        await message.channel.send(
+            f"🎉 {bumper.mention} bumped again today! "
+            f"Streak: **{user_data['bump_streak']} days**"
         )
+        return
 
     # continuing streak
     elif last_date == today - timedelta(days=1):
         user_data["bump_streak"] += 1
 
-    # reset streak
+    # streak reset
     else:
         user_data["bump_streak"] = 1
 
@@ -167,9 +124,8 @@ async def on_message(message):
     await update_roles(bumper, user_data["bump_streak"])
 
     await message.channel.send(
-        f"🎉 {bumper.mention} bumped the server! Streak: **{user_data['bump_streak']} days!**"
+        f"🔥 {bumper.mention}'s Streak is now *{user_data['bump_streak']} days!*"
     )
-
 
 # --------------------------------------------
 # ADMIN: /editstreak
@@ -207,7 +163,6 @@ async def editstreak_cmd(interaction: discord.Interaction, member: discord.Membe
         ephemeral=True
     )
 
-
 @editstreak_cmd.error
 async def editstreak_error(interaction: discord.Interaction, error):
     if isinstance(error, app_commands.MissingPermissions):
@@ -216,7 +171,6 @@ async def editstreak_error(interaction: discord.Interaction, error):
             ephemeral=True
         )
     raise error
-
 
 # --------------------------------------------
 # USER: /bumpstreak
@@ -229,7 +183,7 @@ async def bumpstreak_cmd(interaction: discord.Interaction):
 
     if user_id not in bump_data:
         return await interaction.response.send_message(
-            "You don't have a streak yet! Use `/bump` to start.",
+            "You don't have a streak yet!",
             ephemeral=True
         )
 
@@ -238,7 +192,6 @@ async def bumpstreak_cmd(interaction: discord.Interaction):
     await interaction.response.send_message(
         f"🔥 {interaction.user.display_name}, your streak is **{streak} days!**"
     )
-
 
 # --------------------------------------------
 # USER: /bumpleaderboard
@@ -264,7 +217,6 @@ async def bumpleaderboard_cmd(interaction: discord.Interaction):
         msg += f"**{i}. {name} — {info['bump_streak']} days**\n"
 
     await interaction.response.send_message(msg)
-
 
 # --------------------------------------------
 # RUN BOT
