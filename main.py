@@ -64,7 +64,7 @@ async def on_ready():
 # NEW SYSTEM: DETECT BUMP-BOT CONFIRMATION
 # --------------------------------------------
 
-BUMP_BOT_ID = 1076203014834759780  # <-- Replace with ACTUAL Bump-Bot ID if different
+BUMP_BOT_ID = 735147814878969968
 
 @bot.event
 async def on_message(message: discord.Message):
