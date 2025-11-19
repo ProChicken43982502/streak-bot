@@ -104,8 +104,7 @@ async def on_message(message: discord.Message):
     # same day bump
     if last_date == today:
         await message.channel.send(
-            f"🎉 {bumper.mention} bumped again today! "
-            f"Streak: **{user_data['bump_streak']} days**"
+            f"🔥 {bumper.mention}'s Streak is still *{user_data['bump_streak']} days!*"
         )
         return
 
