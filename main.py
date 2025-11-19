@@ -15,18 +15,16 @@ tree = bot.tree
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 DATA_FILE = os.path.join(os.getcwd(), "bump_data.json")
 
-def load_data():
-    try:
-        with open(DATA_FILE, "r") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {}
+if os.path.exists(DATA_FILE):
+    with open(DATA_FILE, "r") as f:
+        streaks = json.load(f)
+else:
+    bumpStreaks = {}  # {user_id: {"streak": int, "last_bump": "YYYY-MM-DD"}}
 
-def save_data(data):
+
+def save_streaks():
     with open(DATA_FILE, "w") as f:
-        json.dump(data, f, indent=4)
-
-bump_data = load_data()
+        json.dump(bumpStreaks, f, indent=4)
 
 # --------------------------------------------
 # ROLE UPDATE FUNCTION
@@ -94,38 +92,36 @@ async def on_message(message: discord.Message):
     user_id = str(bumper.id)
     today = datetime.utcnow().date()
 
-    user_data = bump_data.get(user_id, {"bump_streak": 0, "last_bump_date": None})
-    last_date = (
-        datetime.fromisoformat(user_data["last_bump_date"]).date()
-        if user_data["last_bump_date"]
-        else None
-    )
-
-    # same day bump
-    if last_date == today:
-        await message.channel.send(
-            f"🔥 {bumper.mention}'s Streak is still *{user_data['bump_streak']} days!*"
+    # New user
+    if user_id not in bumpStreaks:
+        bumpStreaks[user_id] = {"streak": 1, "last_bump": str(today)}
+        save_streaks()
+        return await message.channel.send(
+            f"🔥 {bumper.mention}, First bump! Your streak is now **1 day**."
         )
-        return
 
-    # continuing streak
-    elif last_date == today - timedelta(days=1):
-        user_data["bump_streak"] += 1
+    last_str = bumpStreaks[user_id]["last_bump"]
+    last_bump = datetime.strptime(last_str, "%Y-%m-%d").date()
 
-    # streak reset
+    # Already bumped today
+    if last_bump == today:
+        return await message.channel.send(
+            "⏳ {bumper.mention}, You already bumped today!"
+        )
+
+    # Consecutive day?
+    if last_bump == today - timedelta(days=1):
+        bumpStreaks[user_id]["streak"] += 1
     else:
-        user_data["bump_streak"] = 1
+        bumpStreaks[user_id]["streak"] = 1  # reset streak
 
-    user_data["last_bump_date"] = today.isoformat()
-    bump_data[user_id] = user_data
-    save_data(bump_data)
+    bumpStreaks[user_id]["last_bump"] = str(today)
+    save_streaks()
 
-    await update_roles(bumper, user_data["bump_streak"])
-
-    await message.channel.send(
-        f"🔥 {bumper.mention}'s Streak is now *{user_data['bump_streak']} days!*"
+    await interaction.response.send_message(
+        f"🔥 Bump complete! Your streak is now **{bumpStreaks[user_id]['streak']} days**."
     )
-
+    
 # --------------------------------------------
 # ADMIN: /editstreak
 # --------------------------------------------
